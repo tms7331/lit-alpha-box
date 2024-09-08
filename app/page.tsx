@@ -4,9 +4,9 @@ import { Button } from "@/components/ui/button"
 import { useState } from "react"
 import { LitNodeClient, encryptString } from "@lit-protocol/lit-node-client";
 import { AuthCallbackParams } from "@lit-protocol/types";
-import { LIT_RPC, LitNetwork } from "@lit-protocol/constants";
+import { LitNetwork } from "@lit-protocol/constants";
 import { LitAbility, LitAccessControlConditionResource, LitActionResource, createSiweMessageWithRecaps, generateAuthSig } from "@lit-protocol/auth-helpers";
-import { disconnectWeb3 } from "@lit-protocol/auth-browser";
+// import { disconnectWeb3 } from "@lit-protocol/auth-browser";
 import { ethers } from 'ethers';
 import { createClient } from '@supabase/supabase-js'
 import * as Tooltip from "@radix-ui/react-tooltip"
@@ -70,7 +70,7 @@ const genActionSource = (url: string) => {
                 { role: 'system', content: 'You are a helpful assistant who will summarize data from a variety of users.  The users will submit predictions about three projects: BTC, ETH, and Lit Protocol, and you will summarize the predictions into a single prediction.  Their predictions will be separated by ##### .  Give a concise summary of the predictions, trying to find common themes and patterns.' },
                 { role: 'user', content: inputString },
             ],
-            max_tokens: 50,
+            max_tokens: 200,
             temperature: 0.7,
         };
         const text = await Lit.Actions.runOnce({ waitForResponse: true, name: "apiCall" }, async () => {
@@ -117,7 +117,7 @@ const genAuthSig = async (
     const address = await wallet.getAddress();
     console.log("genAuthSig address: ", address);
 
-    let blockHash = await client.getLatestBlockhash();
+    const blockHash = await client.getLatestBlockhash();
     const message = await createSiweMessageWithRecaps({
         walletAddress: address,
         nonce: blockHash,
@@ -138,7 +138,7 @@ const genSession = async (
     wallet: ethers.Signer,
     client: LitNodeClient,
     resources: LitResourceAbilityRequest[]) => {
-    let sessionSigs = await client.getSessionSigs({
+    const sessionSigs = await client.getSessionSigs({
         chain: "ethereum",
         resourceAbilityRequests: resources,
         authNeededCallback: async (params: AuthCallbackParams) => {
@@ -200,10 +200,10 @@ export default function Component() {
   const [submitted, setSubmitted] = useState(false);
   const [alphaText, setAlphaText] = useState("");
 
-    let client = new LitNodeClient({
-        litNetwork: LitNetwork.DatilDev,
-        debug: true
-    });
+  const client = new LitNodeClient({
+      litNetwork: LitNetwork.DatilDev,
+      debug: true
+  });
 
   const accessControlConditions = [
     {
@@ -241,16 +241,6 @@ export default function Component() {
     const fetchAndSetMessage = async () => {
 
     const encryptedData = await fetchSupabase();
-    // console.log("encryptedData: ", encryptedData);
-    // let inputString = "";
-    // for (const data of encryptedData ?? []) {
-    //     console.log("data: ", data.ciphertext, data.dataToEncryptHash);
-    //     inputString += "#####\n" +data.ciphertext + "\n";
-    //     const dat = data.ciphertext;
-    // }
-    // console.log("inputString: ", inputString);
-    // return ;
-
     await client.connect();
 
     const wallet = await genWallet();
@@ -259,7 +249,7 @@ export default function Component() {
     const ciphertext = process.env.NEXT_PUBLIC_API_CIPHERTEXT!;
     const dataToEncryptHash = process.env.NEXT_PUBLIC_API_DATA_TO_ENCRYPT_HASH!;
     const accsResourceString =
-        await LitAccessControlConditionResource.generateResourceString(accessControlConditions as any, dataToEncryptHash);
+        await LitAccessControlConditionResource.generateResourceString(accessControlConditions, dataToEncryptHash);
     const sessionForDecryption = await genSession(wallet, client, [
         {
             resource: new LitActionResource('*'),
@@ -365,7 +355,7 @@ export default function Component() {
               3. Unlock Alpha
             </Button>
             <div className="bg-gray-800 p-4 rounded-md">
-              <p>{alphaText || "Click unlock alpha to see text here"}</p>
+              <p>{alphaText}</p>
             </div>
           </div>
         </div>
