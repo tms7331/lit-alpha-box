@@ -8,33 +8,25 @@ import { LIT_RPC, LitNetwork } from "@lit-protocol/constants";
 import { LitAbility, LitAccessControlConditionResource, LitActionResource, createSiweMessageWithRecaps, generateAuthSig } from "@lit-protocol/auth-helpers";
 import { disconnectWeb3 } from "@lit-protocol/auth-browser";
 import { ethers } from 'ethers';
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 const NFT_CONTRACT_ADDRESS = '0xfdc5ecc2c57D8bE009C02b930518aa85e319B094';
 const NFT_ABI = [
   "function mintNFT() public",
 ];
 
+
 async function mintNFT() {
   if (typeof window.ethereum !== 'undefined') {
     try {
-      // Request account access
       await window.ethereum.request({ method: 'eth_requestAccounts' });
-      
-      // Create a provider
       const provider = new ethers.providers.Web3Provider(window.ethereum);
-      
-      // Get the signer
       const signer = provider.getSigner();
-      
-      // Create a contract instance
       const nftContract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
-      
-      // Call the mint function
       const tx = await nftContract.mintNFT();
-      
-      // Wait for the transaction to be mined
       const receipt = await tx.wait();
-      
       console.log('NFT minted successfully!', receipt.transactionHash);
       return receipt.transactionHash;
     } catch (error) {
@@ -101,6 +93,7 @@ const genWallet = async () => {
     }
 }
 
+
 const genAuthSig = async (
     wallet: ethers.Signer,
     client: LitNodeClient,
@@ -154,13 +147,41 @@ const genSession = async (
 }
 
 
+const writeToSupabase = async (ciphertext: string, dataToEncryptHash: string) => {
+  const newEntry = {
+    "ciphertext": ciphertext,
+    "dataToEncryptHash": dataToEncryptHash,
+  }
+  const { data, error } = await supabase
+    .from('tbl1')
+    .insert([
+      newEntry,
+    ]);
+    console.log("WROTE");
+    console.log(data);
+    console.log(error);
+}
+
+const fetchSupabase = async () => {
+  const { data, error } = await supabase
+    .from('tbl1')
+    .select('*');
+
+  if (error) {
+    console.error(error);
+  }
+  console.log("SUPABASE RESULTS");
+  console.log(data);
+  console.log(error);
+}
+
+
 export default function Component() {
 
   // Run this to reset signing
   // disconnectWeb3();
 
   const chain = 'sepolia';
-  const [message, setMessage] = useState("")
   const [prediction, setPrediction] = useState("")
 
 
@@ -185,7 +206,6 @@ export default function Component() {
     }
   ]
 
-
     const encryptAndSetMessage = async () => {
     await client.connect();
     console.log("prediction: ", prediction);
@@ -196,8 +216,9 @@ export default function Component() {
          },
          client
      );
+     // Want to store it to supabase
+     await writeToSupabase(ciphertext, dataToEncryptHash);
      console.log( ciphertext, dataToEncryptHash )
-     setMessage(ciphertext);
      client.disconnect();
     }
 
@@ -237,7 +258,6 @@ export default function Component() {
     });
     const resText = typeof res.response === 'string' ? res.response : JSON.stringify(res.response);
     console.log("resText: ", resText);
-    setMessage(resText);
     client.disconnect();
     };
 
