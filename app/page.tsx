@@ -1,13 +1,247 @@
 "use client"
-/**
- * v0 by Vercel.
- * @see https://v0.dev/t/tFqbmV0Nrsx
- * Documentation: https://v0.dev/docs#integrating-generated-code-into-your-nextjs-app
- */
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
+import { useState } from "react"
+import { LitNodeClient, encryptString } from "@lit-protocol/lit-node-client";
+import { AuthCallbackParams } from "@lit-protocol/types";
+import { LIT_RPC, LitNetwork } from "@lit-protocol/constants";
+import { LitAbility, LitAccessControlConditionResource, LitActionResource, createSiweMessageWithRecaps, generateAuthSig } from "@lit-protocol/auth-helpers";
+import { disconnectWeb3 } from "@lit-protocol/auth-browser";
+import { ethers } from 'ethers';
+
+const NFT_CONTRACT_ADDRESS = '0xfdc5ecc2c57D8bE009C02b930518aa85e319B094';
+const NFT_ABI = [
+  "function mintNFT() public",
+];
+
+async function mintNFT() {
+  if (typeof window.ethereum !== 'undefined') {
+    try {
+      // Request account access
+      await window.ethereum.request({ method: 'eth_requestAccounts' });
+      
+      // Create a provider
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      
+      // Get the signer
+      const signer = provider.getSigner();
+      
+      // Create a contract instance
+      const nftContract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
+      
+      // Call the mint function
+      const tx = await nftContract.mintNFT();
+      
+      // Wait for the transaction to be mined
+      const receipt = await tx.wait();
+      
+      console.log('NFT minted successfully!', receipt.transactionHash);
+      return receipt.transactionHash;
+    } catch (error) {
+      console.error('Error minting NFT:', error);
+      throw error;
+    }
+  } else {
+    console.error('MetaMask is not installed!');
+    throw new Error('MetaMask is not installed');
+  }
+}
+
+const genActionSource = (url: string) => {
+    return `(async () => {
+        const apiKey = await Lit.Actions.decryptAndCombine({
+            accessControlConditions,
+            ciphertext,
+            dataToEncryptHash,
+            authSig: null,
+            chain: 'sepolia',
+        });
+        const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': "Bearer " + apiKey,
+        };
+        const data = {
+            model: 'gpt-3.5-turbo',
+            messages: [
+                { role: 'system', content: 'You are a helpful assistant.' },
+                { role: 'user', content: 'When was the Roman empire founded?' },
+            ],
+            max_tokens: 50,
+            temperature: 0.7,
+        };
+        const text = await Lit.Actions.runOnce({ waitForResponse: true, name: "apiCall" }, async () => {
+            const resp = await fetch("${url}", {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(data),
+            });
+            let dataResp = await resp.json();
+            const textResp = dataResp.choices[0].message.content.trim();
+            return textResp;
+        });
+        Lit.Actions.setResponse({ response: text });
+    })();`;
+}
+
+
+const ONE_WEEK_FROM_NOW = new Date(
+    Date.now() + 1000 * 60 * 60 * 24 * 7
+).toISOString();
+
+const genWallet = async () => {
+    if (typeof window.ethereum !== 'undefined') {
+
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      await provider.send("eth_requestAccounts", []);
+      const ethersSigner = provider.getSigner();
+      return ethersSigner;
+    } else {
+        console.error("MetaMask is not installed!");
+        throw new Error("MetaMask is not installed");
+    }
+}
+
+const genAuthSig = async (
+    wallet: ethers.Signer,
+    client: LitNodeClient,
+    uri: string,
+    resources: LitResourceAbilityRequest[]
+) => {
+
+    const address = await wallet.getAddress();
+    console.log("genAuthSig address: ", address);
+
+    let blockHash = await client.getLatestBlockhash();
+    const message = await createSiweMessageWithRecaps({
+        walletAddress: address,
+        nonce: blockHash,
+        litNodeClient: client,
+        resources,
+        expiration: ONE_WEEK_FROM_NOW,
+        uri
+    })
+    const authSig = await generateAuthSig({
+        signer: wallet,
+        toSign: message,
+        address: address
+    });
+    return authSig;
+}
+
+const genSession = async (
+    wallet: ethers.Signer,
+    client: LitNodeClient,
+    resources: LitResourceAbilityRequest[]) => {
+    let sessionSigs = await client.getSessionSigs({
+        chain: "ethereum",
+        resourceAbilityRequests: resources,
+        authNeededCallback: async (params: AuthCallbackParams) => {
+            if (!params.expiration) {
+                throw new Error("expiration is required");
+            }
+            if (!params.resources) {
+                throw new Error("resourceAbilityRequests is required");
+            }
+            if (!params.uri) {
+                throw new Error("uri is required");
+            }
+            const authSig = genAuthSig(wallet, client, params.uri, params.resourceAbilityRequests ?? []);
+            return authSig;
+        }
+    });
+
+    return sessionSigs;
+}
+
 
 export default function Component() {
+
+  // Run this to reset signing
+  // disconnectWeb3();
+
+  const chain = 'sepolia';
+  const [message, setMessage] = useState("")
+  const [prediction, setPrediction] = useState("")
+
+
+    let client = new LitNodeClient({
+        litNetwork: LitNetwork.DatilDev,
+        debug: true
+    });
+
+  const accessControlConditions = [
+    {
+      contractAddress: '0xfdc5ecc2c57D8bE009C02b930518aa85e319B094',
+      standardContractType: 'ERC721',
+      chain,
+      method: 'balanceOf',
+      parameters: [
+        ':userAddress'
+      ],
+      returnValueTest: {
+        comparator: '>',
+        value: '0'
+      }
+    }
+  ]
+
+
+    const encryptAndSetMessage = async () => {
+    await client.connect();
+    console.log("prediction: ", prediction);
+     const { ciphertext, dataToEncryptHash } = await encryptString(
+         {
+             accessControlConditions,
+             dataToEncrypt: prediction,
+         },
+         client
+     );
+     console.log( ciphertext, dataToEncryptHash )
+     setMessage(ciphertext);
+     client.disconnect();
+    }
+
+    const fetchAndSetMessage = async () => {
+
+    await client.connect();
+
+    const wallet = await genWallet();
+    console.log("wallet: ", wallet);
+
+    const ciphertext = process.env.NEXT_PUBLIC_API_CIPHERTEXT!;
+    const dataToEncryptHash = process.env.NEXT_PUBLIC_API_DATA_TO_ENCRYPT_HASH!;
+    const accsResourceString =
+        await LitAccessControlConditionResource.generateResourceString(accessControlConditions as any, dataToEncryptHash);
+    const sessionForDecryption = await genSession(wallet, client, [
+        {
+            resource: new LitActionResource('*'),
+            ability: LitAbility.LitActionExecution,
+        },
+        {
+            resource: new LitAccessControlConditionResource(accsResourceString),
+            ability: LitAbility.AccessControlConditionDecryption,
+
+        }
+    ]
+    );
+
+  const url = 'https://api.openai.com/v1/chat/completions';
+    const res = await client.executeJs({
+        sessionSigs: sessionForDecryption,
+        code: genActionSource(url),
+        jsParams: {
+            accessControlConditions,
+            ciphertext,
+            dataToEncryptHash,
+        }
+    });
+    const resText = typeof res.response === 'string' ? res.response : JSON.stringify(res.response);
+    console.log("resText: ", resText);
+    setMessage(resText);
+    client.disconnect();
+    };
+
+
   return (
     <div 
       className="flex flex-col min-h-[100dvh] bg-gradient-to-b from-[#1E293B] to-[#0F172A] text-white"
@@ -33,7 +267,7 @@ export default function Component() {
           </div>
           <div>
             <label htmlFor="prediction" className="block text-sm font-medium">
-              What are your predictions for BTC, ETH, and LIT Protocol?
+              What are your predictions for BTC, ETH, and Lit Protocol?
             </label>
             <div className="mt-1 flex flex-col gap-2">
               <Textarea
@@ -42,17 +276,19 @@ export default function Component() {
                 rows={3}
                 className="block w-full rounded-md border-gray-600 bg-gray-700 px-4 py-3 text-white focus:border-primary focus:ring-primary"
                 placeholder="Enter your prediction..."
+                value={prediction}
+                onChange={(e) => setPrediction(e.target.value)}
               />
-              <Button className="flex-shrink-0" onClick={() => console.log("Submit prediction")}>
+              <Button className="flex-shrink-0" onClick={() => encryptAndSetMessage()}>
                 1. Submit prediction
               </Button>
             </div>
           </div>
           <div className="flex flex-col gap-4">
-            <Button className="flex-1" onClick={() => console.log("Mint NFT")}>
+            <Button className="flex-1" onClick={() => mintNFT()}>
               2. Mint NFT
             </Button>
-            <Button variant="secondary" className="flex-1" onClick={() => console.log("Unlock Alpha")}>
+            <Button variant="secondary" className="flex-1" onClick={() => fetchAndSetMessage()}>
               3. Unlock Alpha
             </Button>
             <div className="bg-gray-800 p-4 rounded-md">
