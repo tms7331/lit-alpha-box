@@ -4,6 +4,9 @@ Lit Alpha Box is a decentralized application that harnesses the wisdom of crowds
 
 Built for ETHGlobal 2024.
 
+Try it out here:
+https://lit-alpha-box.vercel.app/
+
 ## Features
 
 - Submit encrypted predictions for BTC, ETH, and Lit Protocol

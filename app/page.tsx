@@ -6,7 +6,7 @@ import { LitNodeClient, encryptString } from "@lit-protocol/lit-node-client";
 import { AuthCallbackParams } from "@lit-protocol/types";
 import { LitNetwork } from "@lit-protocol/constants";
 import { LitAbility, LitAccessControlConditionResource, LitActionResource, createSiweMessageWithRecaps, generateAuthSig } from "@lit-protocol/auth-helpers";
-// import { disconnectWeb3 } from "@lit-protocol/auth-browser";
+import { disconnectWeb3 } from "@lit-protocol/auth-browser";
 import { ethers } from 'ethers';
 import { createClient } from '@supabase/supabase-js'
 import * as Tooltip from "@radix-ui/react-tooltip"
@@ -193,7 +193,7 @@ const fetchSupabase = async () => {
 export default function Component() {
 
   // Run this to reset signing
-  // disconnectWeb3();
+  disconnectWeb3();
 
   const chain = 'sepolia';
   const [prediction, setPrediction] = useState("");
@@ -240,44 +240,51 @@ export default function Component() {
 
     const fetchAndSetMessage = async () => {
 
-    const encryptedData = await fetchSupabase();
-    await client.connect();
+    try {
 
-    const wallet = await genWallet();
-    console.log("wallet: ", wallet);
+      const encryptedData = await fetchSupabase();
+      await client.connect();
 
-    const ciphertext = process.env.NEXT_PUBLIC_API_CIPHERTEXT!;
-    const dataToEncryptHash = process.env.NEXT_PUBLIC_API_DATA_TO_ENCRYPT_HASH!;
-    const accsResourceString =
-        await LitAccessControlConditionResource.generateResourceString(accessControlConditions, dataToEncryptHash);
-    const sessionForDecryption = await genSession(wallet, client, [
-        {
-            resource: new LitActionResource('*'),
-            ability: LitAbility.LitActionExecution,
-        },
-        {
-            resource: new LitAccessControlConditionResource(accsResourceString),
-            ability: LitAbility.AccessControlConditionDecryption,
+      const wallet = await genWallet();
+      console.log("wallet: ", wallet);
 
-        }
-    ]
-    );
+      const ciphertext = process.env.NEXT_PUBLIC_API_CIPHERTEXT!;
+      const dataToEncryptHash = process.env.NEXT_PUBLIC_API_DATA_TO_ENCRYPT_HASH!;
+      const accsResourceString =
+          await LitAccessControlConditionResource.generateResourceString(accessControlConditions, dataToEncryptHash);
+      const sessionForDecryption = await genSession(wallet, client, [
+          {
+              resource: new LitActionResource('*'),
+              ability: LitAbility.LitActionExecution,
+          },
+          {
+              resource: new LitAccessControlConditionResource(accsResourceString),
+              ability: LitAbility.AccessControlConditionDecryption,
 
-  const url = 'https://api.openai.com/v1/chat/completions';
-    const res = await client.executeJs({
-        sessionSigs: sessionForDecryption,
-        code: genActionSource(url),
-        jsParams: {
-            accessControlConditions,
-            ciphertext,
-            dataToEncryptHash,
-            encryptedData,
-        }
-    });
-    const resText = typeof res.response === 'string' ? res.response : JSON.stringify(res.response);
-    console.log("resText: ", resText);
-    setAlphaText(resText);
-    client.disconnect();
+          }
+      ]
+      );
+
+    const url = 'https://api.openai.com/v1/chat/completions';
+      const res = await client.executeJs({
+          sessionSigs: sessionForDecryption,
+          code: genActionSource(url),
+          jsParams: {
+              accessControlConditions,
+              ciphertext,
+              dataToEncryptHash,
+              encryptedData,
+          }
+      });
+      const resText = typeof res.response === 'string' ? res.response : JSON.stringify(res.response);
+      console.log("resText: ", resText);
+      setAlphaText(resText);
+      client.disconnect();
+    } catch (error) {
+      console.error('Error:', error);
+      setAlphaText("You must mint an NFT to unlock the alpha!");
+      throw error;
+    }
     };
 
 
