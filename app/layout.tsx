@@ -16,7 +16,7 @@ const fontBody = Inter({
   variable: '--font-body',
 })
 
-export default function Layout({ children }) {
+export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body 
