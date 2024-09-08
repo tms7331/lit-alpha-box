@@ -53,11 +53,22 @@ const genActionSource = (url: string) => {
         'Content-Type': 'application/json',
         'Authorization': "Bearer " + apiKey,
         };
+        let inputString = '';
+        for (const data of encryptedData ?? []) {
+            const userInput = await Lit.Actions.decryptAndCombine({
+                accessControlConditions,
+                ciphertext: data.ciphertext,
+                dataToEncryptHash: data.dataToEncryptHash,
+                authSig: null,
+                chain: 'sepolia',
+            });
+            inputString += "#####" + userInput;
+        }
         const data = {
             model: 'gpt-3.5-turbo',
             messages: [
-                { role: 'system', content: 'You are a helpful assistant.' },
-                { role: 'user', content: 'When was the Roman empire founded?' },
+                { role: 'system', content: 'You are a helpful assistant who will summarize data from a variety of users.  The users will submit predictions about three projects: BTC, ETH, and Lit Protocol, and you will summarize the predictions into a single prediction.  Their predictions will be separated by ##### .  Give a concise summary of the predictions, trying to find common themes and patterns.' },
+                { role: 'user', content: inputString },
             ],
             max_tokens: 50,
             temperature: 0.7,
@@ -75,6 +86,7 @@ const genActionSource = (url: string) => {
         Lit.Actions.setResponse({ response: text });
     })();`;
 }
+
 
 
 const ONE_WEEK_FROM_NOW = new Date(
@@ -174,6 +186,7 @@ const fetchSupabase = async () => {
   console.log("SUPABASE RESULTS");
   console.log(data);
   console.log(error);
+  return data;
 }
 
 
@@ -185,7 +198,7 @@ export default function Component() {
   const chain = 'sepolia';
   const [prediction, setPrediction] = useState("");
   const [submitted, setSubmitted] = useState(false);
-
+  const [alphaText, setAlphaText] = useState("");
 
     let client = new LitNodeClient({
         litNetwork: LitNetwork.DatilDev,
@@ -227,6 +240,17 @@ export default function Component() {
 
     const fetchAndSetMessage = async () => {
 
+    const encryptedData = await fetchSupabase();
+    // console.log("encryptedData: ", encryptedData);
+    // let inputString = "";
+    // for (const data of encryptedData ?? []) {
+    //     console.log("data: ", data.ciphertext, data.dataToEncryptHash);
+    //     inputString += "#####\n" +data.ciphertext + "\n";
+    //     const dat = data.ciphertext;
+    // }
+    // console.log("inputString: ", inputString);
+    // return ;
+
     await client.connect();
 
     const wallet = await genWallet();
@@ -257,10 +281,12 @@ export default function Component() {
             accessControlConditions,
             ciphertext,
             dataToEncryptHash,
+            encryptedData,
         }
     });
     const resText = typeof res.response === 'string' ? res.response : JSON.stringify(res.response);
     console.log("resText: ", resText);
+    setAlphaText(resText);
     client.disconnect();
     };
 
@@ -339,7 +365,7 @@ export default function Component() {
               3. Unlock Alpha
             </Button>
             <div className="bg-gray-800 p-4 rounded-md">
-              <p>Click unlock alpha to see text here</p>
+              <p>{alphaText || "Click unlock alpha to see text here"}</p>
             </div>
           </div>
         </div>
