@@ -9,6 +9,7 @@ import { LitAbility, LitAccessControlConditionResource, LitActionResource, creat
 import { disconnectWeb3 } from "@lit-protocol/auth-browser";
 import { ethers } from 'ethers';
 import { createClient } from '@supabase/supabase-js'
+import * as Tooltip from "@radix-ui/react-tooltip"
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -182,7 +183,8 @@ export default function Component() {
   // disconnectWeb3();
 
   const chain = 'sepolia';
-  const [prediction, setPrediction] = useState("")
+  const [prediction, setPrediction] = useState("");
+  const [submitted, setSubmitted] = useState(false);
 
 
     let client = new LitNodeClient({
@@ -220,6 +222,7 @@ export default function Component() {
      await writeToSupabase(ciphertext, dataToEncryptHash);
      console.log( ciphertext, dataToEncryptHash )
      client.disconnect();
+     setSubmitted(true);
     }
 
     const fetchAndSetMessage = async () => {
@@ -304,10 +307,34 @@ export default function Component() {
               </Button>
             </div>
           </div>
-          <div className="flex flex-col gap-4">
-            <Button className="flex-1" onClick={() => mintNFT()}>
-              2. Mint NFT
-            </Button>
+          <div className="flex flex-col gap-6">
+            <Tooltip.Provider>
+              <Tooltip.Root>
+                <Tooltip.Trigger asChild>
+                  <div>
+                    <Button 
+                      className="flex-1 w-full" 
+                      disabled={!submitted} 
+                      onClick={() => mintNFT()}
+                    >
+                      2. Mint NFT
+                    </Button>
+                  </div>
+                </Tooltip.Trigger>
+                {!submitted && (
+                  <Tooltip.Portal>
+                    <Tooltip.Content
+                      className="bg-gray-800 text-white px-3 py-2 rounded shadow-lg z-50"
+                      sideOffset={5}
+                      side="top"
+                    >
+                      Submit a prediction to mint the NFT!
+                      <Tooltip.Arrow className="fill-gray-800" />
+                    </Tooltip.Content>
+                  </Tooltip.Portal>
+                )}
+              </Tooltip.Root>
+            </Tooltip.Provider>
             <Button variant="secondary" className="flex-1" onClick={() => fetchAndSetMessage()}>
               3. Unlock Alpha
             </Button>
